@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>调弦 · 吉他调音器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=DM+Mono:wght@300;400;500&display=swap');
+
+:root{
+  --bg:        #171210;
+  --panel:     #221a14;
+  --wood-hi:   #33261b;
+  --wood-lo:   #1c1510;
+  --line:      rgba(242,232,217,.09);
+  --cream:     #f2e8d9;
+  --dim:       #a3937d;
+  --faint:     #6b5f4e;
+  --brass:     #e3a44b;
+  --brass-lo:  #b87a28;
+  --green:     #9dc98a;
+  --green-lo:  #5f8a4e;
+  --red:       #d97757;
+  --display:   "Fraunces","Noto Serif SC","Songti SC",serif;
+  --mono:      "DM Mono","SF Mono",monospace;
+  --body:      -apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+html,body{ height:100%; }
+
+body{
+  font-family:var(--body);
+  background:
+    radial-gradient(120% 90% at 50% 0%, #231a13 0%, var(--bg) 55%, #100c09 100%);
+  color:var(--cream);
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  overflow-x:hidden;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* 背景琴弦氛围 */
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background:repeating-linear-gradient(90deg,
+    transparent 0 13.5%,
+    rgba(242,232,217,.028) 13.5% calc(13.5% + 1px));
+  pointer-events:none;
+  z-index:0;
+}
+
+.wrap{
+  position:relative; z-index:1;
+  width:min(680px,100%);
+  margin:0 auto;
+  padding:clamp(18px,4vw,32px) 20px calc(28px + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column;
+  flex:1;
+}
+
+/* ── 页眉 ─────────────────────── */
+header{
+  display:flex; align-items:baseline; justify-content:space-between;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line);
+}
+.brand{ display:flex; align-items:baseline; gap:12px; }
+.brand h1{
+  font-family:var(--display);
+  font-weight:500; font-size:22px; letter-spacing:.06em;
+}
+.brand .en{
+  font-family:var(--mono); font-size:11px; font-weight:300;
+  color:var(--faint); letter-spacing:.28em; text-transform:uppercase;
+}
+header .mode-tag{
+  font-family:var(--mono); font-size:11px; color:var(--dim);
+  letter-spacing:.12em;
+}
+
+/* ── 琴弦选择 ─────────────────────── */
+.strings{
+  margin-top:22px;
+  background:linear-gradient(180deg,var(--wood-hi),var(--wood-lo));
+  border:1px solid rgba(242,232,217,.07);
+  border-radius:14px;
+  padding:14px 12px 12px;
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:4px;
+  position:relative;
+}
+.strings::after{ /* 顶部螺钉细节 */
+  content:""; position:absolute; left:18px; right:18px; top:7px; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(242,232,217,.10),transparent);
+}
+.str{
+  appearance:none; background:none; border:none; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:9px;
+  padding:12px 2px 8px; border-radius:8px;
+  color:var(--dim); font-family:var(--display);
+  transition:color .25s, background .25s;
+  position:relative;
+}
+.str .wire{
+  width:100%; border-radius:2px;
+  background:linear-gradient(180deg,#8a7a63,#d8c7a8);
+}
+.str:nth-child(1) .wire{ height:4px; }
+.str:nth-child(2) .wire{ height:3.5px; }
+.str:nth-child(3) .wire{ height:3px; }
+.str:nth-child(4) .wire{ height:2.5px; }
+.str:nth-child(5) .wire{ height:2px; }
+.str:nth-child(6) .wire{ height:1.5px; }
+.str .note{ font-size:26px; font-weight:500; line-height:1; }
+.str .hz{
+  font-family:var(--mono); font-size:10px; font-weight:300;
+  color:var(--faint); letter-spacing:.04em;
+}
+.str.active{ color:var(--brass); background:rgba(227,164,75,.07); }
+.str.active .hz{ color:var(--brass-lo); }
+.str.active .wire{ box-shadow:0 0 10px rgba(227,164,75,.45); }
+@media (hover:hover){
+  .str:not(.active):hover{ color:var(--cream); background:rgba(242,232,217,.04); }
+}
+
+.auto-row{
+  display:flex; justify-content:flex-end; margin-top:10px;
+}
+#autoBtn{
+  appearance:none; cursor:pointer;
+  font-family:var(--mono); font-size:12px; letter-spacing:.1em;
+  color:var(--dim); background:none;
+  border:1px solid var(--line); border-radius:999px;
+  padding:6px 16px;
+  transition:all .25s;
+}
+#autoBtn.on{ color:var(--brass); border-color:rgba(227,164,75,.4); }
+#autoBtn .dot{
+  display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:var(--faint); margin-right:8px; vertical-align:1px;
+  transition:background .25s, box-shadow .25s;
+}
+#autoBtn.on .dot{ background:var(--brass); box-shadow:0 0 8px rgba(227,164,75,.8); }
+
+/* ── 表盘区 ─────────────────────── */
+.stage{
+  flex:1;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:clamp(10px,3vw,26px) 0 6px;
+}
+#gauge{ width:min(400px,88vw); display:block; }
+#gauge .needle{ transform-origin:200px 205px; }
+
+.note-line{
+  display:flex; align-items:baseline; gap:10px;
+  margin-top:-14px;
+}
+#bigNote{
+  font-family:var(--display); font-weight:300;
+  font-size:clamp(84px,22vw,128px); line-height:1;
+  color:var(--cream);
+  transition:color .2s;
+  min-width:1.1em; text-align:center;
+}
+#bigNote small{
+  font-size:.32em; font-weight:500; color:var(--dim);
+  vertical-align:.55em; margin-left:.08em;
+}
+.target{
+  font-family:var(--mono); font-size:13px; font-weight:300;
+  color:var(--dim); letter-spacing:.06em;
+}
+
+.status{
+  margin-top:16px;
+  font-family:var(--mono); font-size:14px; letter-spacing:.14em;
+  color:var(--dim); min-height:22px;
+  transition:color .2s;
+}
+.status.ok{ color:var(--green); }
+.status.low{ color:var(--brass); }
+.status.high{ color:var(--red); }
+
+/* ── 读数条 ─────────────────────── */
+.readout{
+  margin-top:26px;
+  display:grid; grid-template-columns:1fr 1fr 1.2fr;
+  border-top:1px solid var(--line);
+  padding-top:16px; gap:12px;
+}
+.cell .lab{
+  font-family:var(--mono); font-size:10px; font-weight:300;
+  color:var(--faint); letter-spacing:.22em; margin-bottom:5px;
+}
+.cell .val{
+  font-family:var(--mono); font-size:17px; color:var(--cream);
+}
+.cell .val em{ font-style:normal; font-size:11px; color:var(--dim); margin-left:3px; }
+.lvl{
+  height:4px; border-radius:2px; margin-top:9px;
+  background:rgba(242,232,217,.08); overflow:hidden;
+}
+.lvl i{
+  display:block; height:100%; width:0%;
+  background:linear-gradient(90deg,var(--brass-lo),var(--brass));
+  border-radius:2px; transition:width .1s linear;
+}
+
+/* ── 启动遮罩 ─────────────────────── */
+#gate{
+  position:fixed; inset:0; z-index:10;
+  background:rgba(16,12,9,.92);
+  backdrop-filter:blur(6px);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:22px; padding:32px; text-align:center;
+  transition:opacity .5s;
+}
+#gate.hide{ opacity:0; pointer-events:none; }
+#gate .g-wire{ width:120px; height:3px; border-radius:2px;
+  background:linear-gradient(180deg,#8a7a63,#4a3f30); }
+#gate h2{
+  font-family:var(--display); font-weight:500; font-size:30px;
+}
+#gate p{
+  color:var(--dim); font-size:14px; line-height:1.8; max-width:300px;
+}
+#startBtn{
+  appearance:none; cursor:pointer;
+  font-family:var(--body); font-size:16px; letter-spacing:.2em;
+  color:#1c1510; background:linear-gradient(180deg,var(--brass),var(--brass-lo));
+  border:none; border-radius:999px;
+  padding:15px 52px;
+  box-shadow:0 6px 28px rgba(227,164,75,.28);
+  transition:transform .15s, box-shadow .25s;
+}
+#startBtn:active{ transform:scale(.96); }
+#gate .err{ color:var(--red); font-size:13px; min-height:18px; }
+
+footer{
+  text-align:center; padding-top:22px;
+  font-size:11px; color:var(--faint); letter-spacing:.08em;
+}
+
+button:focus-visible{ outline:2px solid var(--brass); outline-offset:3px; }
+
+@media (max-width:420px){
+  .str .note{ font-size:22px; }
+  .readout{ grid-template-columns:1fr 1fr; }
+  .cell:nth-child(3){ grid-column:1 / -1; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{ transition:none !important; animation:none !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="g-wire"></div>
+  <h2>调弦</h2>
+  <p>标准定弦 · E A D G B E<br>点击下方按钮开启麦克风，然后拨响一根琴弦。</p>
+  <button id="startBtn">开启麦克风</button>
+  <div class="err" id="gateErr"></div>
+</div>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>调弦</h1>
+      <span class="en">Guitar Tuner</span>
+    </div>
+    <span class="mode-tag" id="modeTag">STANDARD EADGBE</span>
+  </header>
+
+  <div class="strings" id="strings"></div>
+  <div class="auto-row">
+    <button id="autoBtn" class="on"><span class="dot"></span>自动识别</button>
+  </div>
+
+  <div class="stage">
+    <svg id="gauge" viewBox="0 0 400 230" aria-hidden="true"></svg>
+    <div class="note-line">
+      <div id="bigNote">–</div>
+    </div>
+    <div class="target" id="targetHz">等待声音…</div>
+    <div class="status" id="status">拨响任意一根弦</div>
+  </div>
+
+  <div class="readout">
+    <div class="cell">
+      <div class="lab">实时频率</div>
+      <div class="val"><span id="freqVal">--</span><em>Hz</em></div>
+    </div>
+    <div class="cell">
+      <div class="lab">音分偏差</div>
+      <div class="val"><span id="centsVal">--</span><em>¢</em></div>
+    </div>
+    <div class="cell">
+      <div class="lab">输入电平</div>
+      <div class="lvl"><i id="lvlBar"></i></div>
+    </div>
+  </div>
+
+  <footer>建议在安静环境中使用 · 手机与吉他保持 30–50 cm</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ── 常量 ─────────────────────────── */
+const STRINGS = [
+  { note:"E", oct:2, hz:82.41  },
+  { note:"A", oct:2, hz:110.00 },
+  { note:"D", oct:3, hz:146.83 },
+  { note:"G", oct:3, hz:196.00 },
+  { note:"B", oct:3, hz:246.94 },
+  { note:"E", oct:4, hz:329.63 },
+];
+const RANGE = 50;        // 表盘满量程音分
+const OK_CENTS = 3;      // 判定"准了"的容差
+const NS = "http://www.w3.org/2000/svg";
+
+/* ── DOM ─────────────────────────── */
+const $ = id => document.getElementById(id);
+const gaugeEl = $("gauge"), stringsEl = $("strings");
+const bigNoteEl = $("bigNote"), targetEl = $("targetHz"), statusEl = $("status");
+const freqEl = $("freqVal"), centsEl = $("centsVal"), lvlEl = $("lvlBar");
+const autoBtn = $("autoBtn"), gate = $("gate"), startBtn = $("startBtn"), gateErr = $("gateErr");
+
+/* ── 状态 ─────────────────────────── */
+let audioCtx = null, analyser = null, buf = null, rafId = 0;
+let autoMode = true, activeIdx = -1;      // -1 = 未命中
+let smoothCents = null;                    // 指针平滑值
+let hist = [];                             // 频率中值滤波窗口
+let lastSignal = 0;                        // 上次收到有效信号的时间戳
+
+/* ── 琴弦选择条 ─────────────────────── */
+STRINGS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "str";
+  b.innerHTML = `<span class="wire"></span><span class="note">${s.note}</span><span class="hz">${s.hz.toFixed(0)}Hz</span>`;
+  b.setAttribute("aria-label", `${s.note}${s.oct} 弦`);
+  b.addEventListener("click", () => {
+    autoMode = false;
+    autoBtn.classList.remove("on");
+    setActive(i);
+  });
+  stringsEl.appendChild(b);
+});
+autoBtn.addEventListener("click", () => {
+  autoMode = true;
+  autoBtn.classList.add("on");
+  setActive(-1);
+});
+function setActive(i){
+  activeIdx = i;
+  [...stringsEl.children].forEach((el, k) => el.classList.toggle("active", k === i));
+}
+
+/* ── 表盘绘制（SVG） ─────────────── */
+const CX = 200, CY = 205, R = 168;
+(function buildGauge(){
+  const mk = (tag, attrs) => {
+    const el = document.createElementNS(NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    gaugeEl.appendChild(el);
+    return el;
+  };
+  const pt = (cents, r) => {
+    const a = (cents / RANGE) * (Math.PI / 2);
+    return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+  };
+  const arc = (c0, c1, r) => {
+    const [x0, y0] = pt(c0, r), [x1, y1] = pt(c1, r);
+    return `M ${x0} ${y0} A ${r} ${r} 0 0 1 ${x1} ${y1}`;
+  };
+  // 刻度弧
+  mk("path", { d: arc(-RANGE, RANGE, R), fill: "none",
+               stroke: "rgba(242,232,217,.22)", "stroke-width": 2 });
+  // "准了"窗口（±3 音分）
+  mk("path", { d: arc(-OK_CENTS, OK_CENTS, R), fill: "none",
+               stroke: "#9dc98a", "stroke-width": 5, opacity: .9, id: "okArc" });
+  // 刻度与数字
+  for (let c = -RANGE; c <= RANGE; c += 10){
+    const major = c % 20 === 0;
+    const [x0, y0] = pt(c, R), [x1, y1] = pt(c, R - (major ? 14 : 8));
+    mk("line", { x1: x0, y1: y0, x2: x1, y2: y1,
+                 stroke: major ? "rgba(242,232,217,.5)" : "rgba(242,232,217,.25)",
+                 "stroke-width": major ? 2 : 1 });
+    if (major && c !== 0){
+      const [tx, ty] = pt(c, R - 30);
+      const t = mk("text", { x: tx, y: ty + 4, "text-anchor": "middle",
+        fill: "#6b5f4e", "font-size": 13,
+        "font-family": "Fraunces,serif", "font-style": "italic" });
+      t.textContent = c < 0 ? "♭" + (-c) : "♯" + c;
+    }
+  }
+  // 中心 "0"
+  const z = mk("text", { x: CX, y: CY - R + 40, "text-anchor": "middle",
+    fill: "#a3937d", "font-size": 13, "font-family": "DM Mono,monospace" });
+  z.textContent = "0";
+  // 指针
+  const g = document.createElementNS(NS, "g");
+  g.setAttribute("class", "needle"); g.id = "needle";
+  const ln = document.createElementNS(NS, "line");
+  ln.setAttribute("x1", CX); ln.setAttribute("y1", CY);
+  ln.setAttribute("x2", CX); ln.setAttribute("y2", CY - R + 22);
+  ln.setAttribute("stroke", "url(#needleGrad)");
+  ln.setAttribute("stroke-width", 3.5);
+  ln.setAttribute("stroke-linecap", "round");
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML = `<linearGradient id="needleGrad" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#b87a28"/><stop offset="1" stop-color="#e3a44b"/></linearGradient>`;
+  g.appendChild(ln);
+  gaugeEl.appendChild(defs);
+  gaugeEl.appendChild(g);
+  // 轴心
+  mk("circle", { cx: CX, cy: CY, r: 9, fill: "#221a14",
+                 stroke: "#b87a28", "stroke-width": 2 });
+  gaugeEl.querySelector(".needle").style.transform = "rotate(-90deg)";
+})();
+
+/* ── 启动麦克风 ───────────────────── */
+startBtn.addEventListener("click", async () => {
+  gateErr.textContent = "";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    await audioCtx.resume();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    src.connect(analyser);
+    buf = new Float32Array(analyser.fftSize);
+    gate.classList.add("hide");
+    loop();
+  } catch (e) {
+    gateErr.textContent = e.name === "NotAllowedError"
+      ? "麦克风权限被拒绝，请在浏览器设置中允许后重试。"
+      : "无法访问麦克风：" + (e.message || e.name);
+  }
+});
+
+/* ── 基频检测：自相关法 ─────────────── */
+function autoCorrelate(buf, sampleRate){
+  const N = buf.length;
+  let rms = 0;
+  for (let i = 0; i < N; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / N);
+  if (rms < 0.008) return { rms, freq: -1 };
+
+  // 粗略过零裁剪，加速并降噪
+  let r1 = 0, r2 = N - 1;
+  const thres = 0.2;
+  for (let i = 0; i < N / 2; i++) if (Math.abs(buf[i]) < thres){ r1 = i; break; }
+  for (let i = 1; i < N / 2; i++) if (Math.abs(buf[N - i]) < thres){ r2 = N - i; break; }
+  const b = buf.slice(r1, r2), n = b.length;
+  if (n < 512) return { rms, freq: -1 };
+
+  // lag 搜索范围：吉他基频 70–700 Hz 对应的周期
+  const minLag = Math.max(2, Math.floor(sampleRate / 700));
+  const maxLag = Math.min(n - 1, Math.ceil(sampleRate / 70));
+  if (maxLag <= minLag) return { rms, freq: -1 };
+
+  const c = new Float32Array(maxLag + 2);
+  let d = 0;
+  for (let i = 0; i < n; i++) d += b[i] * b[i];
+  c[0] = d / n;
+  let maxC = 0;
+  for (let lag = minLag; lag <= maxLag; lag++){
+    let s = 0;
+    for (let i = 0; i < n - lag; i++) s += b[i] * b[i + lag];
+    c[lag] = s / (n - lag);                // 精确归一化，消除窗口偏差
+    if (c[lag] > maxC) maxC = c[lag];
+  }
+  if (maxC <= c[0] * 0.3) return { rms, freq: -1 };
+
+  // 在所有超过 0.85·maxC 的局部峰中取最短 lag（进一步避免半频/倍频误判）
+  let best = -1;
+  for (let lag = minLag; lag <= maxLag; lag++){
+    if (c[lag] > 0.85 * maxC &&
+        c[lag] >= c[lag - 1] && c[lag] >= c[lag + 1]){
+      best = lag; break;
+    }
+  }
+  if (best < 0){ best = minLag; while (best < maxLag && c[best + 1] > c[best]) best++; }
+  if (best <= 0) return { rms, freq: -1 };
+
+  // 抛物线插值细化
+  const y1 = c[best - 1] || 0, y2 = c[best], y3 = c[best + 1] || 0;
+  const shift = (y3 - y1) / (2 * (2 * y2 - y1 - y3) || 1);
+  let freq = sampleRate / (best + shift);
+
+  if (freq < 70 || freq > 700) return { rms, freq: -1 };
+  return { rms, freq };
+}
+
+/* ── 主循环 ─────────────────────── */
+function loop(){
+  rafId = requestAnimationFrame(loop);
+  analyser.getFloatTimeDomainData(buf);
+  const { rms, freq } = autoCorrelate(buf, audioCtx.sampleRate);
+
+  lvlEl.style.width = Math.min(100, rms * 900) + "%";
+
+  if (freq > 0){
+    lastSignal = performance.now();
+    hist.push(freq);
+    if (hist.length > 5) hist.shift();
+  } else if (performance.now() - lastSignal > 700 && hist.length){
+    hist = [];          // 声音停止后清空，避免残留
+  }
+
+  if (hist.length >= 3){
+    // 中值滤波
+    const sorted = [...hist].sort((a, b) => a - b);
+    const f = sorted[sorted.length >> 1];
+    // 选择目标弦
+    let idx = activeIdx;
+    if (autoMode || idx < 0){
+      let bestC = Infinity;
+      STRINGS.forEach((s, i) => {
+        const c = 1200 * Math.log2(f / s.hz);
+        if (Math.abs(c) < Math.abs(bestC)){ bestC = c; idx = i; }
+      });
+      if (autoMode) setActive(idx);
+    }
+    const s = STRINGS[idx];
+    const cents = 1200 * Math.log2(f / s.hz);
+    render(f, cents, s);
+  } else {
+    idle();
+  }
+}
+
+function render(f, cents, s){
+  // 指针平滑（指数趋近）
+  smoothCents = smoothCents === null ? cents : smoothCents + (cents - smoothCents) * 0.35;
+  const shown = Math.max(-RANGE, Math.min(RANGE, smoothCents));
+  const deg = shown / RANGE * 90;
+  gaugeEl.querySelector(".needle").style.transform = `rotate(${deg - 90}deg)`;
+
+  bigNoteEl.innerHTML = `${s.note}<small>${s.oct}</small>`;
+  targetEl.textContent = `${s.note}${s.oct} 弦 · 目标 ${s.hz.toFixed(2)} Hz`;
+  freqEl.textContent = f.toFixed(1);
+  centsEl.textContent = (cents >= 0 ? "+" : "") + cents.toFixed(0);
+
+  const inTune = Math.abs(cents) <= OK_CENTS;
+  const needle = gaugeEl.querySelector(".needle line");
+  bigNoteEl.style.color = inTune ? "var(--green)" : "var(--cream)";
+  needle.setAttribute("stroke", inTune ? "#9dc98a" : "url(#needleGrad)");
+
+  statusEl.className = "status " + (inTune ? "ok" : cents < 0 ? "low" : "high");
+  statusEl.textContent = inTune ? "✓ 准了"
+    : cents < -OK_CENTS ? "偏低 · 拧紧琴钮"
+    : "偏高 · 放松琴钮";
+}
+
+function idle(){
+  smoothCents = null;
+  freqEl.textContent = "--";
+  centsEl.textContent = "--";
+  if (performance.now() - lastSignal > 700){
+    gaugeEl.querySelector(".needle").style.transform = "rotate(-90deg)";
+    bigNoteEl.innerHTML = "–";
+    targetEl.textContent = "等待声音…";
+    statusEl.className = "status";
+    statusEl.textContent = "拨响任意一根弦";
+    bigNoteEl.style.color = "var(--cream)";
+    gaugeEl.querySelector(".needle line").setAttribute("stroke", "url(#needleGrad)");
+  }
+}
+</script>
+</body>
+</html>
