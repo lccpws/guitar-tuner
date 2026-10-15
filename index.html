@@ -347,8 +347,12 @@ const pegLeft = $("pegLeft"), pegRight = $("pegRight"), strlinesG = $("strlines"
 /* ── 状态 ─────────────────────────── */
 let audioCtx = null, analyser = null, buf = null;
 let autoMode = true, activeIdx = -1;
-let smoothCents = null;
-let hist = [];
+let smoothCents = null;      // 指针平滑值（音分）
+let dispFreq = null;         // 频率数字平滑值
+let hist = [];               // 近期被接受的帧频（中值滤波窗口）
+let devCount = 0;            // 连续大幅偏移帧计数
+let tunedLock = false;       // "准了"吸附锁（迟滞）
+let autoCand = null;         // 自动选弦候选（防抖）
 let lastSignal = 0;
 const pegBtns = [];
 
@@ -407,6 +411,13 @@ function noteLabel(n){
 
 /* ── 选中琴弦 → 更新静态区 ───────────── */
 function setActive(i){
+  if (i !== activeIdx){
+    smoothCents = null;
+    dispFreq = null;
+    tunedLock = false;
+    hist = [];
+    devCount = 0;
+  }
   activeIdx = i;
   pegBtns.forEach((b, k) => b.classList.toggle("active", k === i));
   [...strlinesG.children].forEach(l =>
@@ -503,70 +514,122 @@ function autoCorrelate(buf, sampleRate){
   return { rms, freq };
 }
 
+/* ── 帧频接受：八度折叠 + 野值剔除 ───────── */
+function acceptFreq(f){
+  if (hist.length){
+    const prev = hist[hist.length - 1];
+    /* 把 ×2 / ÷2 的八度误检折回上一帧所在八度 */
+    while (f > prev * 1.45) f /= 2;
+    while (f < prev * 0.69) f *= 2;
+    const dc = Math.abs(1200 * Math.log2(f / prev));
+    if (dc > 60){
+      /* 单帧大幅跳变多为噪声，忽略；连续 3 帧才视为换了新弦重新锁定 */
+      if (++devCount < 3) return;
+      hist = [];
+      devCount = 0;
+    } else {
+      devCount = 0;
+    }
+  }
+  hist.push(f);
+  if (hist.length > 9) hist.shift();
+}
+
+function median(arr){
+  const s = [...arr].sort((a, b) => a - b);
+  return s[s.length >> 1];
+}
+
 /* ── 主循环 ─────────────────────── */
+const HOLD_MS = 700;         // 信号丢失后的保持时间
 function loop(){
   requestAnimationFrame(loop);
   analyser.getFloatTimeDomainData(buf);
   const { rms, freq } = autoCorrelate(buf, audioCtx.sampleRate);
 
   lvlBar.style.width = Math.min(100, rms * 900) + "%";
+  const now = performance.now();
+  const silence = now - lastSignal > HOLD_MS;
 
   if (freq > 0){
-    lastSignal = performance.now();
-    hist.push(freq);
-    if (hist.length > 5) hist.shift();
-  } else if (performance.now() - lastSignal > 700 && hist.length){
+    lastSignal = now;
+    acceptFreq(freq);
+  } else if (silence){
     hist = [];
+    devCount = 0;
+    smoothCents = null;
+    dispFreq = null;
+    tunedLock = false;
+    autoCand = null;
   }
 
   if (hist.length >= 3){
-    const sorted = [...hist].sort((a, b) => a - b);
-    const f = sorted[sorted.length >> 1];
+    const f = median(hist);
     let idx = activeIdx;
     if (autoMode || idx < 0){
-      let bestC = Infinity;
+      let bestC = Infinity, bestI = -1;
       STRINGS.forEach((s, i) => {
         const c = 1200 * Math.log2(f / s.hz);
-        if (Math.abs(c) < Math.abs(bestC)){ bestC = c; idx = i; }
+        if (Math.abs(c) < Math.abs(bestC)){ bestC = c; bestI = i; }
       });
-      if (autoMode && idx !== activeIdx) setActive(idx);
+      /* 候选弦需连续 4 帧才切换，防止识别在相邻弦间抖动 */
+      if (bestI !== activeIdx){
+        autoCand = (autoCand && autoCand.i === bestI)
+          ? { i: bestI, n: autoCand.n + 1 } : { i: bestI, n: 1 };
+        if (autoCand.n >= 4) setActive(bestI);
+      } else {
+        autoCand = null;
+      }
+      idx = activeIdx;
     }
-    render(f, 1200 * Math.log2(f / STRINGS[idx].hz));
+    if (idx >= 0) render(f, 1200 * Math.log2(f / STRINGS[idx].hz));
+  } else if (!silence){
+    /* 信号短暂丢失：保持当前显示，不闪烁复位 */
   } else {
     idle();
   }
 }
 
-/* ── 渲染：标志线 + 气泡 + 状态 ───────── */
+/* ── 渲染：自适应平滑 + 吸附锁定 ───────── */
 function render(f, cents){
-  smoothCents = smoothCents === null ? cents : smoothCents + (cents - smoothCents) * 0.35;
-  const shown = Math.max(-RANGE, Math.min(RANGE, smoothCents));
+  /* 偏差大 → 快速跟上；接近目标 → 缓慢细腻收敛 */
+  if (smoothCents === null){
+    smoothCents = cents;
+  } else {
+    const diff = cents - smoothCents;
+    const a = Math.abs(diff) > 20 ? 0.5
+            : Math.abs(diff) > 6  ? 0.22
+            : 0.1;
+    smoothCents += diff * a;
+  }
+
+  /* 吸附区带迟滞：±3¢ 内锁定为"准"，需偏出 ±6¢ 才解锁，消除边缘闪烁 */
+  tunedLock = tunedLock ? Math.abs(cents) <= 6 : Math.abs(cents) <= OK_CENTS;
+  const shown = Math.max(-RANGE, Math.min(RANGE, tunedLock ? 0 : smoothCents));
   markerEl.style.left = (50 + shown / RANGE * 50) + "%";
 
-  const inTune = Math.abs(cents) <= OK_CENTS;
-  bubbleEl.textContent = inTune ? "0" : (cents > 0 ? "+" : "") + Math.round(cents);
-  bubbleEl.classList.toggle("ok", inTune);
+  bubbleEl.textContent = tunedLock ? "0"
+    : (smoothCents > 0 ? "+" : "") + Math.round(smoothCents);
+  bubbleEl.classList.toggle("ok", tunedLock);
 
-  freqVal.textContent = f.toFixed(1);
-  freqBox.classList.toggle("ok", inTune);
+  dispFreq = dispFreq === null ? f : dispFreq + (f - dispFreq) * 0.2;
+  freqVal.textContent = dispFreq.toFixed(1);
+  freqBox.classList.toggle("ok", tunedLock);
 
-  statusEl.className = "status " + (inTune ? "ok" : cents < 0 ? "low" : "high");
-  statusEl.textContent = inTune ? "✓ 准了"
+  statusEl.className = "status " + (tunedLock ? "ok" : cents < 0 ? "low" : "high");
+  statusEl.textContent = tunedLock ? "✓ 准了"
     : cents < -OK_CENTS ? "偏低 · 拧紧琴钮"
     : "偏高 · 放松琴钮";
 }
 
 function idle(){
-  smoothCents = null;
-  if (performance.now() - lastSignal > 700){
-    markerEl.style.left = "50%";
-    bubbleEl.textContent = "–";
-    bubbleEl.classList.remove("ok");
-    freqVal.textContent = "--";
-    freqBox.classList.remove("ok");
-    statusEl.className = "status";
-    statusEl.textContent = activeIdx >= 0 ? "拨响选定的琴弦" : "拨响任意一根弦";
-  }
+  markerEl.style.left = "50%";
+  bubbleEl.textContent = "–";
+  bubbleEl.classList.remove("ok");
+  freqVal.textContent = "--";
+  freqBox.classList.remove("ok");
+  statusEl.className = "status";
+  statusEl.textContent = activeIdx >= 0 ? "拨响选定的琴弦" : "拨响任意一根弦";
 }
 </script>
 </body>
