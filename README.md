@@ -34,6 +34,9 @@
 - Web Audio API + 自相关（autocorrelation）基频检测
 - 纯 HTML/CSS/JS 单文件，无依赖、无后端
 
+## 演示地址
+https://guitar-tuner-self.vercel.app
+
 ## License
 
 MIT
