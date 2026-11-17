@@ -43,6 +43,32 @@
 ## 演示地址
 https://guitar-tuner-self.vercel.app
 
+## Android App
+
+`android-app/` 目录是用 [Capacitor 6](https://capacitorjs.com/) 把本调弦器打包成的离线安卓 App（无需联网、无需浏览器，可直接安装 APK）。
+
+**特性**
+- 页面资源与字体全部内嵌，完全离线可用
+- 针对鸿蒙 4.2 兼容层做了麦克风权限与启动主题适配
+- 桌面图标为球形条纹 Logo，欢迎页一步进入调弦
+
+**本地构建**（需 Node.js、JDK 17、Android SDK platform 34）
+
+```bash
+cd android-app
+npm install
+npx cap sync android
+cd android && ./gradlew assembleDebug
+```
+
+产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`。
+
+目录说明：
+- `www/` — 网页源码（欢迎页 + 调弦页合并的单文件 `index.html`、Logo、字体），是真正需要修改的源文件
+- `android/` — Capacitor 生成的 Android 工程源码
+- `design/` — Logo 设计稿与图标生成脚本（历史迭代记录）
+- `capacitor-cordova-android-plugins/`、`android/app/src/main/assets/public/` 等由 `cap sync` 生成，未纳入版本控制
+
 ## License
 
 MIT
