@@ -417,12 +417,13 @@ const STRINGS = [
 ];
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const RANGE         = 50;    // 标尺满量程音分
-const OK_CENTS      = 5;     // "准了"容差（消费级麦克风下 3¢ 过于苛刻）
+const OK_CENTS      = 3;     // "准了"容差：收紧到 ±3¢，与听感一致（旧值 5¢ 偏松，"显示准了却听着不准"）
 const LOCK_FRAMES   = 6;     // 连续稳定帧才判定"准了"
 const MATCH_CENTS   = 60;    // 自动选弦 / 允许给出方向指令的最大偏差
 const DANGER_CENTS  = 100;   // 明显高于目标：禁止继续拧紧
 const OCTAVE_GUARD  = 700;   // 低于目标超过此值视为八度/谐波误判，一律拒绝给拧紧指令
 const F_MIN = 70, F_MAX = 450;   // 吉他空弦合理频率范围（含余量）
+const F_TOO_LOW = 78;   // 比最低空弦 E2(82.41) 略低：真实基频低于它即判"弦过松/读数不可信"
 const CLARITY_MIN   = 0.62;  // 周期性置信度门槛，挡噪声/杂音/泛音
 const STALE_MS      = 250;   // 读数超过此年龄即不再给出任何方向指令
 const HOLD_MS       = 700;   // 读数完全过期，清空显示
@@ -729,6 +730,16 @@ function loop(){
 
   if (!stale && hist.length >= 2){
     const f = median(hist);
+
+    /* ── 低频保护 ──────────────────────────
+       新弦/松弦时真实基频可能低于检测下限，YIN 会命中它的 2/3 次谐波，
+       显示成一百多到二百多 Hz 的假读数。真实基频一旦落到吉他音域下沿，
+       就不再给任何"偏高/放松/偏低"指令，明确提示弦仍过松，防止误导。 */
+    if (f < F_TOO_LOW){
+      renderTooLow(f, now);
+      return;
+    }
+
     let idx = activeIdx;
 
     if (autoMode || idx < 0){
@@ -772,13 +783,14 @@ function render(f, cents, now){
   }
 
   if (Math.abs(cents) <= OK_CENTS) tunedFrames++; else tunedFrames = 0;
-  tunedLock = tunedLock ? Math.abs(cents) <= 10 : tunedFrames >= LOCK_FRAMES;
+  /* 锁定后同样用严格容差判断，不再放宽到 10¢——否则会"已锁定但偏差 9¢"仍显示准了 */
+  tunedLock = tunedLock ? Math.abs(cents) <= OK_CENTS * 2 : tunedFrames >= LOCK_FRAMES;
 
-  /* 气泡与指针使用同一个裁剪值，避免旧版"数字 +2400¢ 而指针钉在边缘"的矛盾 */
-  const shown = Math.max(-RANGE, Math.min(RANGE, tunedLock ? 0 : smoothCents));
+  /* 气泡显示真实偏差，不再强制归零：锁定容差是 ±3¢，显示 0/−2/+2 都与听感一致。
+     ±6¢ 内显示"接近"的绿色，但数字如实呈现，杜绝"屏幕 0¢、耳朵听着偏"的矛盾。 */
+  const shown = Math.max(-RANGE, Math.min(RANGE, smoothCents));
   markerEl.style.left = (50 + shown / RANGE * 50) + "%";
-  bubbleEl.textContent = tunedLock ? "0"
-    : (shown > 0 ? "+" : "") + Math.round(shown);
+  bubbleEl.textContent = (shown > 0 ? "+" : "") + Math.round(shown);
   bubbleEl.classList.toggle("ok", tunedLock);
   /* 指针钉在标尺边缘时把气泡染色，避免 ±50¢ 被误读成"只差 50 音分" */
   bubbleEl.classList.toggle("out", !tunedLock && Math.abs(smoothCents) > RANGE);
@@ -800,11 +812,20 @@ function render(f, cents, now){
   statusEl.className = "status";
   let warn = "", strong = false;
 
-  if (cents > DANGER_CENTS){
-    /* 最高优先级：无论读数多新，一旦明显偏高就禁止继续拧紧 */
+  if (cents > OCTAVE_GUARD){
+    /* 读数比目标高出整整一个八度以上：几乎不可能是"拧过头"，
+       而是松弦的低基频被误检成二/三次谐波（如真实 73Hz 显示成 146–220Hz）。
+       绝不能据此让用户放松；正确做法是提示重新拨弦、先确认选弦。 */
     statusEl.classList.add("danger");
-    statusEl.textContent = "⚠ 明显偏高 · 请放松琴钮";
-    warn = `停止拧紧！当前 ${dispFreq.toFixed(1)} Hz 比 ${note} 弦目标高出 ${Math.round(cents)} 音分，继续拧紧可能断弦。请放松琴钮，再重新拨弦核对。`;
+    statusEl.textContent = "⚠ 疑似谐波 · 请重新拨弦";
+    warn = `当前 ${dispFreq.toFixed(1)} Hz 比 ${note} 弦目标高出 ${Math.round(cents)} 音分，超出正常调弦范围，很可能是琴弦太松时的低次谐波被误检，并非真的拧过头。请先确认拨的是空弦、选弦正确；若弦仍很松，请继续缓慢拧紧，不要按"偏高"处理而放松。`;
+    strong = true;
+  } else if (cents > DANGER_CENTS){
+    /* 明显偏高：可能是拧过头（危险），也可能是松弦谐波/选错弦。
+       一律先停手确认，不武断下"放松"结论——松弦用户被误导放松会更糟。 */
+    statusEl.classList.add("danger");
+    statusEl.textContent = "⚠ 明显偏高 · 先停手确认";
+    warn = `请立即停止拧动！当前 ${dispFreq.toFixed(1)} Hz 比 ${note} 弦目标高出 ${Math.round(cents)} 音分。先重新拨响空弦、核对选弦：若确实拧过头，请放松琴钮（继续拧紧会断弦）；若琴弦仍很松，这个数字可能是谐波误判，不要放松，继续缓慢拧紧即可。`;
     strong = true;
   } else if (cents < -OCTAVE_GUARD){
     /* 八度误判专用闸：-1200¢ 这类读数绝不可能是"弦太松"，禁止任何拧紧指令 */
@@ -840,6 +861,11 @@ function render(f, cents, now){
 }
 
 function renderNoTarget(f, now){
+  /* 松弦时检测到的低次谐波同样不该显示成"某根标准弦"的正常读数 */
+  if (f < F_TOO_LOW){
+    renderTooLow(f, now);
+    return;
+  }
   /* 跨半音以上的跳变直接跟上真实读数，避免平滑值落后于警告文案造成自相矛盾 */
   if (dispFreq === null || Math.abs(centsOf(f, dispFreq)) > 100) dispFreq = f;
   else dispFreq += (f - dispFreq) * 0.25;
@@ -853,6 +879,21 @@ function renderNoTarget(f, now){
   statusEl.className = "status unknown";
   statusEl.textContent = now - lastValid > STALE_MS ? "请重新拨弦" : "未匹配到标准弦";
   setWarn("当前读数与六根标准弦都相差超过半个音，可能是泛音、杂音或没弹空弦。请重新拨响一根空弦；确认前不要拧动琴钮。", false);
+}
+
+/* ── 频率过低：弦太松 / 检测到的是次谐波 ─────
+   新弦或未拉紧的弦，真实基频低于可检测下限，屏幕不再显示一个看似"正常"的数字，
+   而是明确告诉用户"弦还太松、读数不可信"，并禁止任何拧紧/放松方向指令。 */
+function renderTooLow(f, now){
+  freqVal.textContent = "--";
+  freqBox.classList.remove("ok");
+  markerEl.style.left = "50%";
+  bubbleEl.textContent = "–";
+  bubbleEl.classList.remove("ok", "out");
+  readingLine.textContent = `检测到 ${f.toFixed(1)} Hz · 低于吉他最低空弦，读数不可信`;
+  statusEl.className = "status low";
+  statusEl.textContent = "⚠ 频率过低 · 弦还太松";
+  setWarn("当前读数低于吉他最低空弦 E2（82.41 Hz），说明琴弦还没拉紧，显示的数字可能是弦的低次谐波而非真实音高，不能用来判断音准。请继续缓慢拧紧（每次 1/8 圈、拧完重新拨弦），等读数升到 82 Hz 以上再按指引微调。", false);
 }
 
 function idle(){
