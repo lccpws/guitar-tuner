@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>调弦 · 吉他调音器</title>
+<title>调弦 · 乐器调音器</title>
 <style>
 /* 字体已本地化，完全离线可用 */
 @font-face{
@@ -284,6 +284,29 @@ footer b{ color:var(--mut); font-weight:500; }
 #welcome .hint{ margin-top:12px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--faint); }
 #welcome footer{ margin-top:16px; font-family:var(--mono); font-size:10px; color:var(--faint); letter-spacing:.12em; }
 
+/* ── 乐器切换 ─────────────────────── */
+.inst-switch{
+  display:flex; gap:6px; margin-top:12px;
+  overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;
+}
+.inst-switch::-webkit-scrollbar{ display:none; }
+.inst-switch button{
+  appearance:none; cursor:pointer; flex:0 0 auto;
+  font-family:var(--body); font-size:12px; letter-spacing:.04em;
+  color:var(--mut); background:rgba(255,255,255,.03);
+  border:1px solid var(--line); border-radius:999px; padding:6px 14px;
+  transition:all .2s;
+}
+.inst-switch button.on{
+  color:#161616; background:var(--green); border-color:var(--green);
+  box-shadow:0 0 12px rgba(143,224,77,.28);
+}
+@media (hover:hover){
+  .inst-switch button:not(.on):hover{ color:var(--ink); border-color:rgba(255,255,255,.4); }
+}
+#welcome .inst-switch{ justify-content:center; margin-top:clamp(14px,2.5vh,22px); }
+#welcome .inst-switch button{ padding:8px 17px; font-size:13px; }
+
 button:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
 
 @media (max-width:400px){
@@ -303,9 +326,10 @@ button:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
   <img class="logo" src="logo.png" alt="调弦 Logo">
   <div class="brandline">
     <h1>调弦</h1>
-    <span class="en">Guitar Tuner</span>
+    <span class="en">Instrument Tuner</span>
   </div>
   <p class="tagline">让每一根空弦，都回归它本来的音高</p>
+  <div class="inst-switch" id="welcomeInst"></div>
   <div class="features">
     <div class="feature">
       <div class="ic"><svg viewBox="0 0 24 24"><path d="M3 12h2l2-6 3 12 3-9 2 6h6"/></svg></div>
@@ -325,17 +349,18 @@ button:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
     <div id="gateErr"></div>
     <div class="hint">首次使用需授权麦克风 · 建议在安静环境中</div>
   </div>
-  <footer>精准校音 · 完全离线 · 标准定弦 E A D G B E</footer>
+  <footer id="welcomeFoot">精准校音 · 完全离线 · 吉他标准定弦 E A D G B E</footer>
 </div>
 
 <div class="wrap">
   <header>
     <div class="brand">
       <h1>调弦</h1>
-      <span class="en">Guitar Tuner</span>
+      <span class="en">Instrument Tuner</span>
     </div>
     <button id="autoBtn" class="on"><span class="dot"></span>自动识别</button>
   </header>
+  <div class="inst-switch" id="tunerInst"></div>
 
   <div class="stage">
     <div class="freq-display" id="freqBox">
@@ -381,22 +406,70 @@ button:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
 
   <footer>
     <b>安全调弦</b> · 每次只拧 1/8 圈，拧完必须重新拨弦核对；先放松再往回拧，不要一次拧到位。<br>
-    若读数不随拧动上升、或页面提示明显偏高，请立刻停手。建议在安静环境中使用，手机距吉他 30–50 cm。
+    若读数不随拧动上升、或页面提示明显偏高，请立刻停手。建议在安静环境中使用，手机距琴弦 30–50 cm。
   </footer>
 </div>
 
 <script>
 "use strict";
 
-/* ── 常量 ─────────────────────────── */
-const STRINGS = [
-  { note:"E", oct:2, hz:82.41  },
-  { note:"A", oct:2, hz:110.00 },
-  { note:"D", oct:3, hz:146.83 },
-  { note:"G", oct:3, hz:196.00 },
-  { note:"B", oct:3, hz:246.94 },
-  { note:"E", oct:4, hz:329.63 },
+/* ── 乐器定义 ───────────────────────────
+   每种乐器有独立的定弦、音域与检测参数。
+   贝斯 E1 仅 41.20 Hz：低于原算法的 65 Hz 下限，且一阶高通会在 38 Hz 附近
+   把它明显衰减，因此单独加长采样窗、降低高通截止与检测下限。 */
+const INSTRUMENTS = [
+  {
+    id:"guitar", name:"吉他", en:"Guitar", tuning:"E A D G B E",
+    strings:[
+      { note:"E", oct:2, hz:82.41  },
+      { note:"A", oct:2, hz:110.00 },
+      { note:"D", oct:3, hz:146.83 },
+      { note:"G", oct:3, hz:196.00 },
+      { note:"B", oct:3, hz:246.94 },
+      { note:"E", oct:4, hz:329.63 },
+    ],
+    pegs:"low-left",
+    fftSize:4096, hpR:0.995, detLo:60, detHi:900,
+    fMin:70, fMax:450, fTooLow:78,
+  },
+  {
+    id:"ukulele", name:"尤克里里", en:"Ukulele", tuning:"G C E A（高 G）",
+    strings:[
+      { note:"G", oct:4, hz:392.00 },
+      { note:"C", oct:4, hz:261.63 },
+      { note:"E", oct:4, hz:329.63 },
+      { note:"A", oct:4, hz:440.00 },
+    ],
+    pegs:"two-two",
+    fftSize:4096, hpR:0.995, detLo:200, detHi:900,
+    fMin:230, fMax:520, fTooLow:240,
+  },
+  {
+    id:"bass", name:"贝斯", en:"Bass", tuning:"E A D G",
+    strings:[
+      { note:"E", oct:1, hz:41.20 },
+      { note:"A", oct:1, hz:55.00 },
+      { note:"D", oct:2, hz:73.42 },
+      { note:"G", oct:2, hz:98.00 },
+    ],
+    pegs:"two-two",
+    fftSize:8192, hpR:0.9985, detLo:33, detHi:400,
+    fMin:37, fMax:130, fTooLow:38,
+  },
+  {
+    id:"violin", name:"小提琴", en:"Violin", tuning:"G D A E",
+    strings:[
+      { note:"G", oct:3, hz:196.00 },
+      { note:"D", oct:4, hz:293.66 },
+      { note:"A", oct:4, hz:440.00 },
+      { note:"E", oct:5, hz:659.25 },
+    ],
+    pegs:"two-two",
+    fftSize:4096, hpR:0.995, detLo:165, detHi:950,
+    fMin:180, fMax:760, fTooLow:180,
+  },
 ];
+
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const RANGE         = 50;    // 标尺满量程音分
 const OK_CENTS      = 3;     // "准了"容差：收紧到 ±3¢，与听感一致（旧值 5¢ 偏松，"显示准了却听着不准"）
@@ -404,8 +477,6 @@ const LOCK_FRAMES   = 6;     // 连续稳定帧才判定"准了"
 const MATCH_CENTS   = 60;    // 自动选弦 / 允许给出方向指令的最大偏差
 const DANGER_CENTS  = 100;   // 明显高于目标：禁止继续拧紧
 const OCTAVE_GUARD  = 700;   // 低于目标超过此值视为八度/谐波误判，一律拒绝给拧紧指令
-const F_MIN = 70, F_MAX = 450;   // 吉他空弦合理频率范围（含余量）
-const F_TOO_LOW = 78;   // 比最低空弦 E2(82.41) 略低：真实基频低于它即判"弦过松/读数不可信"
 const CLARITY_MIN   = 0.62;  // 周期性置信度门槛，挡噪声/杂音/泛音
 const STALE_MS      = 250;   // 读数超过此年龄即不再给出任何方向指令
 const HOLD_MS       = 700;   // 读数完全过期，清空显示
@@ -420,8 +491,11 @@ const rulerEl = $("ruler"), markerEl = $("marker"), bubbleEl = $("bubble");
 const notesEl = $("notes"), statusEl = $("status"), lvlBar = $("lvlBar");
 const autoBtn = $("autoBtn"), welcome = $("welcome"), startBtn = $("startBtn"), gateErr = $("gateErr");
 const pegLeft = $("pegLeft"), pegRight = $("pegRight"), strlinesG = $("strlines");
+const welcomeInst = $("welcomeInst"), tunerInst = $("tunerInst"), welcomeFoot = $("welcomeFoot");
 
 /* ── 状态 ─────────────────────────── */
+let inst = INSTRUMENTS[0];        // 当前乐器
+let STRINGS = inst.strings;       // 当前乐器的弦定义（保持下游代码变量名不变）
 let audioCtx = null, analyser = null, buf = null;
 let autoMode = true, activeIdx = -1;
 let smoothCents = null, dispFreq = null, lastTrendF = null;
@@ -439,21 +513,17 @@ for (let c = -RANGE; c <= RANGE; c += 5){
   rulerEl.appendChild(t);
 }
 
-/* ── 琴头：弦线 + 选弦按钮 ───────────── */
-const STR_W = [3.5, 3, 2.5, 2, 1.6, 1.2];
-STRINGS.forEach((s, i) => {
-  const x = 27 + i * 13;
-  const ln = document.createElementNS(NS, "line");
-  ln.setAttribute("x1", x); ln.setAttribute("y1", 12);
-  ln.setAttribute("x2", x); ln.setAttribute("y2", 210);
-  ln.setAttribute("stroke", "#cfc6b4");
-  ln.setAttribute("stroke-width", STR_W[i]);
-  ln.setAttribute("stroke-linecap", "round");
-  ln.setAttribute("class", "strline");
-  ln.dataset.i = i;
-  strlinesG.appendChild(ln);
-});
-
+/* ── 琴头：弦线 + 选弦按钮（随乐器重建） ───────────── */
+/* 弦宽从最粗到最细线性分布，适配 4/6 弦 */
+function stringWidth(n, i){
+  const hi = 3.5, lo = 1.2;
+  return n <= 1 ? hi : hi - (hi - lo) * i / (n - 1);
+}
+/* 弦在琴颈上的 x 坐标：均匀铺在 27..93 之间 */
+function stringX(n, i){
+  const hi = 93, lo = 27;
+  return n <= 1 ? (hi + lo) / 2 : lo + (hi - lo) * i / (n - 1);
+}
 function makePegBtn(i){
   const s = STRINGS[i];
   const b = document.createElement("button");
@@ -468,14 +538,87 @@ function makePegBtn(i){
   pegBtns[i] = b;
   return b;
 }
-/* 左列 D A E（上→下），右列 G B E —— 与真实琴头一致 */
-[2, 1, 0].forEach(i => pegLeft.appendChild(makePegBtn(i)));
-[3, 4, 5].forEach(i => pegRight.appendChild(makePegBtn(i)));
+function buildHead(){
+  strlinesG.replaceChildren();
+  pegLeft.replaceChildren();
+  pegRight.replaceChildren();
+  pegBtns.length = 0;
+
+  const n = STRINGS.length;
+  STRINGS.forEach((s, i) => {
+    const x = stringX(n, i);
+    const ln = document.createElementNS(NS, "line");
+    ln.setAttribute("x1", x); ln.setAttribute("y1", 12);
+    ln.setAttribute("x2", x); ln.setAttribute("y2", 210);
+    ln.setAttribute("stroke", "#cfc6b4");
+    ln.setAttribute("stroke-width", stringWidth(n, i));
+    ln.setAttribute("stroke-linecap", "round");
+    ln.setAttribute("class", "strline");
+    ln.dataset.i = i;
+    strlinesG.appendChild(ln);
+  });
+
+  /* 吉他：低音三弦在左、高音三弦在右，各列上→下按弦序排列。
+     其余乐器：四根弦按 2+2 分布。 */
+  let leftIdx, rightIdx;
+  if (n === 6 && inst.pegs === "low-left"){
+    leftIdx = [2, 1, 0]; rightIdx = [3, 4, 5];
+  } else {
+    const half = Math.ceil(n / 2);
+    leftIdx = [], rightIdx = [];
+    for (let i = 0; i < n; i++) (i < half ? leftIdx : rightIdx).push(i);
+    leftIdx.reverse();
+  }
+  leftIdx.forEach(i => pegLeft.appendChild(makePegBtn(i)));
+  rightIdx.forEach(i => pegRight.appendChild(makePegBtn(i)));
+}
+buildHead();
 
 autoBtn.addEventListener("click", () => {
   autoMode = true;
   autoBtn.classList.add("on");
   setActive(-1);
+});
+
+/* ── 乐器切换 ─────────────────────────── */
+function selectInstrument(id){
+  const next = INSTRUMENTS.find(x => x.id === id);
+  if (!next || next === inst) return;
+  inst = next;
+  STRINGS = inst.strings;
+
+  /* 换乐器 = 换一套完全不同的频率，所有音高相关状态必须清空，
+     否则会拿上一件乐器的平滑值/历史去比新目标，误判并给出错误方向指令。 */
+  activeIdx = -1;
+  autoMode = true;
+  smoothCents = null; dispFreq = null; lastTrendF = null;
+  hist = []; pending = null; autoCand = null;
+  tunedFrames = 0; tunedLock = false; lastValid = 0;
+
+  autoBtn.classList.add("on");
+  welcomeFoot.textContent = `精准校音 · 完全离线 · ${inst.name}标准定弦 ${inst.tuning}`;
+  [welcomeInst, tunerInst].forEach(bar => {
+    [...bar.children].forEach(b => b.classList.toggle("on", b.dataset.id === id));
+  });
+
+  buildHead();
+  setActive(-1);
+  if (analyser){
+    /* 缓冲区长度随乐器变化（贝斯需要 8192），必须同步重建 */
+    analyser.fftSize = inst.fftSize;
+    buf = new Float32Array(analyser.fftSize);
+  }
+}
+[welcomeInst, tunerInst].forEach(bar => {
+  INSTRUMENTS.forEach(it => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = it.name;
+    b.dataset.id = it.id;
+    b.className = it === inst ? "on" : "";
+    b.addEventListener("click", () => selectInstrument(it.id));
+    bar.appendChild(b);
+  });
 });
 
 /* ── 音名工具 ─────────────────────── */
@@ -543,7 +686,7 @@ startBtn.addEventListener("click", async () => {
     analyser = audioCtx.createAnalyser();
     /* 4096 样本 ≈ 85ms @48kHz，低音 E2 有约 7 个完整周期；
        旧的 2048 只有 3.5 个周期，长 lag 自相关极不稳定 */
-    analyser.fftSize = 4096;
+    analyser.fftSize = inst.fftSize;
     src.connect(analyser);
     buf = new Float32Array(analyser.fftSize);
     welcome.classList.add("hide");
@@ -581,7 +724,9 @@ function detectPitch(input, sampleRate){
 
   const x = new Float32Array(N);
   let rms = 0, prevX = 0, prevY = 0;
-  const R = 0.995;   // 一阶高通，截止约 38Hz @48kHz，几乎不影响 82Hz 基频
+  /* 一阶高通：吉他/尤克里里/小提琴用 0.995（截止约 38Hz@48k）；
+     贝斯 E1=41Hz 会被这个截止明显衰减，改用 0.9985（约 12Hz）。 */
+  const R = inst.hpR;
   for (let i = 0; i < N; i++){
     const v = input[i] - mean;
     const y = R * (prevY + v - prevX);
@@ -593,8 +738,8 @@ function detectPitch(input, sampleRate){
   if (rms < 0.004) return { rms, freq: -1, clarity: 0 };
 
   const W = Math.min(1536, Math.floor(N / 2));
-  const maxTau = Math.min(Math.floor(sampleRate / 65), N - W - 2);
-  const minTau = Math.max(2, Math.floor(sampleRate / 900));
+  const maxTau = Math.min(Math.floor(sampleRate / inst.detLo), N - W - 2);
+  const minTau = Math.max(2, Math.floor(sampleRate / inst.detHi));
   if (maxTau <= minTau + 2) return { rms, freq: -1, clarity: 0 };
 
   /* 差分函数 d(tau) */
@@ -643,7 +788,7 @@ function detectPitch(input, sampleRate){
   const shift = Math.abs(denom) > 1e-9 ? (y3 - y1) / denom : 0;
   const t = tau + Math.max(-0.5, Math.min(0.5, shift));
   const freq = sampleRate / t;
-  if (freq < 65 || freq > 900) return { rms, freq: -1, clarity };
+  if (freq < inst.detLo || freq > inst.detHi) return { rms, freq: -1, clarity };
   return { rms, freq, clarity };
 }
 
@@ -652,7 +797,7 @@ function detectPitch(input, sampleRate){
    整段拨弦都被锁死在错误八度（196Hz → 98Hz），这是断弦的直接原因。
    现在只做：范围/置信度过滤 + 短窗口中值 + 大幅跳变时重置（不折半）。 */
 function acceptFreq(f, clarity){
-  if (f < F_MIN || f > F_MAX || clarity < CLARITY_MIN) return false;
+  if (f < inst.fMin || f > inst.fMax || clarity < CLARITY_MIN) return false;
   if (hist.length){
     const prev = median(hist);
     if (Math.abs(centsOf(f, prev)) > 70){
@@ -712,9 +857,9 @@ function loop(){
 
     /* ── 低频保护 ──────────────────────────
        新弦/松弦时真实基频可能低于检测下限，YIN 会命中它的 2/3 次谐波，
-       显示成一百多到二百多 Hz 的假读数。真实基频一旦落到吉他音域下沿，
+       显示成一百多到二百多 Hz 的假读数。真实基频一旦落到当前乐器音域下沿，
        就不再给任何"偏高/放松/偏低"指令，明确提示弦仍过松，防止误导。 */
-    if (f < F_TOO_LOW){
+    if (f < inst.fTooLow){
       renderTooLow(f, now);
       return;
     }
@@ -841,7 +986,7 @@ function render(f, cents, now){
 
 function renderNoTarget(f, now){
   /* 松弦时检测到的低次谐波同样不该显示成"某根标准弦"的正常读数 */
-  if (f < F_TOO_LOW){
+  if (f < inst.fTooLow){
     renderTooLow(f, now);
     return;
   }
@@ -857,7 +1002,7 @@ function renderNoTarget(f, now){
   readingLine.textContent = `当前 ${dispFreq.toFixed(1)} Hz · 等待更清晰的空弦音${trendOf(f)}`;
   statusEl.className = "status unknown";
   statusEl.textContent = now - lastValid > STALE_MS ? "请重新拨弦" : "未匹配到标准弦";
-  setWarn("当前读数与六根标准弦都相差超过半个音，可能是泛音、杂音或没弹空弦。请重新拨响一根空弦；确认前不要拧动琴钮。", false);
+  setWarn(`当前读数与${inst.name}的 ${inst.strings.length} 根标准弦都相差超过半个音，可能是泛音、杂音或没弹空弦。请重新拨响一根空弦；确认前不要拧动琴钮。`, false);
 }
 
 /* ── 频率过低：弦太松 / 检测到的是次谐波 ─────
@@ -869,10 +1014,11 @@ function renderTooLow(f, now){
   markerEl.style.left = "50%";
   bubbleEl.textContent = "–";
   bubbleEl.classList.remove("ok", "out");
-  readingLine.textContent = `检测到 ${f.toFixed(1)} Hz · 低于吉他最低空弦，读数不可信`;
+  const low = inst.strings.reduce((a, b) => a.hz < b.hz ? a : b);
+  readingLine.textContent = `检测到 ${f.toFixed(1)} Hz · 低于${inst.name}最低空弦，读数不可信`;
   statusEl.className = "status low";
   statusEl.textContent = "⚠ 频率过低 · 弦还太松";
-  setWarn("当前读数低于吉他最低空弦 E2（82.41 Hz），说明琴弦还没拉紧，显示的数字可能是弦的低次谐波而非真实音高，不能用来判断音准。请继续缓慢拧紧（每次 1/8 圈、拧完重新拨弦），等读数升到 82 Hz 以上再按指引微调。", false);
+  setWarn(`当前读数低于${inst.name}最低空弦 ${low.note}${low.oct}（${low.hz.toFixed(2)} Hz），说明琴弦还没拉紧，显示的数字可能是弦的低次谐波而非真实音高，不能用来判断音准。请继续缓慢拧紧（每次 1/8 圈、拧完重新拨弦），等读数升到 ${low.hz.toFixed(0)} Hz 以上再按指引微调。`, false);
 }
 
 function idle(){
