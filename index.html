@@ -195,23 +195,6 @@ header{
 .status.stale{ color:var(--mut); }
 .status.danger{ color:var(--red); font-weight:600; letter-spacing:.06em; }
 
-/* ── 安全提示条 ─────────────────────── */
-.warn{
-  width:min(400px,100%);
-  margin-top:10px; padding:9px 12px;
-  border:1px solid rgba(224,120,86,.45);
-  border-radius:8px;
-  background:rgba(224,120,86,.10);
-  color:#f0b39c;
-  font-size:12px; line-height:1.65; text-align:center;
-}
-.warn[hidden]{ display:none; }
-.warn.strong{
-  background:rgba(224,120,86,.26);
-  border-color:rgba(224,120,86,.85);
-  color:#fff; font-weight:600;
-}
-
 .lvl{
   width:150px; height:3px; border-radius:2px; margin-top:10px;
   background:rgba(255,255,255,.1); overflow:hidden;
@@ -374,7 +357,6 @@ button:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
     <div class="notes" id="notes"></div>
 
     <div class="status" id="status">拨响任意一根弦</div>
-    <div class="warn" id="warn" hidden></div>
     <div class="lvl"><i id="lvlBar"></i></div>
   </div>
 
@@ -433,7 +415,7 @@ const NS = "http://www.w3.org/2000/svg";
 /* ── DOM ─────────────────────────── */
 const $ = id => document.getElementById(id);
 const freqBox = $("freqBox"), freqVal = $("freqVal"), targetLine = $("targetLine");
-const readingLine = $("readingLine"), warnEl = $("warn");
+const readingLine = $("readingLine");
 const rulerEl = $("ruler"), markerEl = $("marker"), bubbleEl = $("bubble");
 const notesEl = $("notes"), statusEl = $("status"), lvlBar = $("lvlBar");
 const autoBtn = $("autoBtn"), welcome = $("welcome"), startBtn = $("startBtn"), gateErr = $("gateErr");
@@ -689,12 +671,9 @@ function acceptFreq(f, clarity){
   return true;
 }
 
-function setWarn(text, strong){
-  if (!text){ warnEl.hidden = true; warnEl.textContent = ""; return; }
-  warnEl.hidden = false;
-  warnEl.textContent = text;
-  warnEl.classList.toggle("strong", !!strong);
-}
+/* 提示框已移除：所有提示统一由 status 单行文字承载，避免大段提示框撑高页面、把吉他图案往下顶。
+   保留此函数签名是为了不改动各渲染分支；调用一概忽略，不再弹出任何框。 */
+function setWarn(text, strong){}
 
 function trendOf(f){
   let t = "";
