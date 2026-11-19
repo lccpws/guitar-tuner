@@ -4,6 +4,16 @@
 
 A free online guitar tuner built on your phone or computer's microphone. Single-file HTML — no installation, no ads. Supports both Chinese and English (auto-detects your system language, with a manual switch).
 
+## Download the Android App (offline)
+
+Don't want to build it yourself? Download the ready-to-install APK (fully offline, no internet required):
+
+- **[Download Guitar Tuner v1.3 APK](https://github.com/lccpws/guitar-tuner/raw/main/apk/guitar-tuner-v1.3.apk)** (package `com.weishuai.guitartuner`, launcher label "Guitar Tuner")
+
+> If your mobile browser previews the link instead of downloading, open the menu and choose "Download link / Save as", or open it on a computer and transfer the file to your phone. If installation shows a risk warning, choose "Install anyway" (the app is not on the Play Store, so this is expected). You may need to allow installation from "unknown sources".
+
+For the multi-instrument version (guitar / ukulele / bass / violin), visit [instrument-tuner](https://github.com/lccpws/instrument-tuner) to download. The two apps have different package names and can coexist on the same device.
+
 ## Features
 
 - **Real-time pitch detection via microphone** — autocorrelation algorithm, all six strings accurate to within ±1 cent
