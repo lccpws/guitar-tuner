@@ -1,6 +1,6 @@
 {
   "appId": "com.weishuai.guitartuner",
-  "appName": "调弦",
+  "appName": "吉他调弦",
   "webDir": "www",
   "server": {
     "androidScheme": "https"

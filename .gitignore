@@ -1,5 +1,5 @@
-# Dependencies
-node_modules/
+# Dependencies (no trailing slash so symlinks are ignored too)
+node_modules
 
 # OS files
 .DS_Store
